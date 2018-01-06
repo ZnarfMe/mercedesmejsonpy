@@ -1,7 +1,7 @@
 from setuptools import setup
 setup(
     name='mercedesmejsonpy',
-    version='0.0.9',
+    version='0.0.12',
     packages=['mercedesmejsonpy'],
     include_package_data=True,
     python_requires='>=3',
@@ -19,4 +19,8 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Topic :: Internet',
     ],
+    install_requires=[
+        'lxml>=4.1.0',
+        'requests>=2.18.4'
+    ]
 )
