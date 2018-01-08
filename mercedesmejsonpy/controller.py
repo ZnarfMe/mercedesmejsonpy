@@ -1,56 +1,79 @@
+# -*- coding: utf-8 -*-
+""" Simple Mercedes me API.
+
+Attributes:
+    username (int): mercedes me username (email)
+    password (string): mercedes me password
+    update_interval (int): min update intervall in seconds
+
+"""
+
+import json
 import time
+from multiprocessing import RLock
 import requests
 import lxml.html
-import json
-from multiprocessing import RLock
+
+SERVER_UI = "https://ui.meapp.secure.mercedes-benz.com"
+SERVER_LOGIN = "https://login.secure.mercedes-benz.com"
+SERVER_APP = "https://app.secure.mercedes-benz.com"
+
+ME_STATUS_URL = "{0}/api/v1.1/me".format(SERVER_UI)
+ME_LOCATION_URL = "{0}/backend/vehicles/%s/location/v2".format(SERVER_APP)
+LOGIN_STEP1_URL = ME_STATUS_URL
+LOGIN_STEP2_URL = '{0}/wl/login'.format(SERVER_LOGIN)
+LOGIN_STEP3_URL = '{0}/iap/b2c-sm-legacy-15.fcc'.format(SERVER_LOGIN)
+
+# Set to False for testing with tools like fiddler
+# Change to True for production
+LOGIN_VERIFY_SSL_CERT = True
 
 class Controller:
+    """ Simple Mercedes me API.
+    """
     def __init__(self, username, password, update_interval):
-        
-        self.__lock = RLock()
 
-        self.ME_STATUS_URL = 'https://ui.meapp.secure.mercedes-benz.com/api/v1.1/me'
-        self.ME_LOCATION_URL = 'https://app.secure.mercedes-benz.com/backend/vehicles/%s/location/v2'
-        self.LOGIN_VERIFY_SSL_CERT = True
-        self.__last_update_time = 0
+        self.__lock = RLock()
+        self.last_update_time = 0
         self.session = requests.session()
-        self.sessionCookies = self.__getSessionCookies(username, password)
+        self.session_cookies = self._get_session_cookies(username, password)
         self.cars = []
         self.update_interval = update_interval
-        self.__getCars()
+        self._get_cars()
 
 
     def update(self):
-        self.__getCars()
-    
-    def getLocation(self, vin):
-        locResponse = self.session.get(self.ME_LOCATION_URL % vin, verify=self.LOGIN_VERIFY_SSL_CERT)
-        return json.loads(locResponse.content.decode('utf8'))['data']
-        
+        """ Simple Mercedes me API.
 
-    def __getCars(self):
+        """
+        self._get_cars()
+
+
+    def getLocation(self, vin):
+        """ get refreshed location information.
+
+        """
+        location_response = self.session.get(ME_LOCATION_URL % vin,
+                                             verify=LOGIN_VERIFY_SSL_CERT)
+        return json.loads(location_response.content.decode('utf8'))['data']
+
+
+    def _get_cars(self):
         cur_time = time.time()
         with self.__lock:
-            if cur_time - self.__last_update_time > self.update_interval:
-                response = self.session.get(self.ME_STATUS_URL, verify=self.LOGIN_VERIFY_SSL_CERT)
-                self.cars = json.loads(response.content.decode('utf8'))['user']['vehicles']
-                self.__last_update_time = time.time()
+            if cur_time - self.last_update_time > self.update_interval:
+                response = self.session.get(ME_STATUS_URL,
+                                            verify=LOGIN_VERIFY_SSL_CERT)
+                self.cars = json.loads(
+                    response.content.decode('utf8'))['user']['vehicles']
+                self.last_update_time = time.time()
 
-    def __getSessionCookies(self, username, password):
-        print("__getSessionCookies called")
-        # Set to False for testing with tools like fiddler
-        # Change to True for production
-        LOGIN_VERIFY_SSL_CERT = self.LOGIN_VERIFY_SSL_CERT
 
+    def _get_session_cookies(self, username, password):
         # GET parameters - URL we'd like to log into.
-
-        LOGIN_URL = self.ME_STATUS_URL #'https://login.secure.mercedes-benz.com/wl/auth?rm=1&TYPE=33554432&REALMOID=06-9d5f226a-fc58-10f8-bde9-85faf120fbc2&GUID=&SMAUTHREASON=0&METHOD=GET&SMAGENTNAME=$SM$iybJ37yxs7nKlHoJtUskLPv2X3AgMbeXwfItY%2bLzSUgcYUnV1XWCUt9g8cPKZsYRtXdUqTZg%2b90efQua72CQui1uF2p%2bc0I9&TARGET=$SM$http%3a%2f%2fnewsfeed%2emeapp%2esecure%2emercedes-benz%2ecom%2fapi%2fv2%2fnewsfeed'
-        LOGIN_AUTH_STEP2_URL = 'https://login.secure.mercedes-benz.com/wl/login'
-        LOGIN_AUTH_STEP3_URL = 'https://login.secure.mercedes-benz.com/iap/b2c-sm-legacy-15.fcc'
-        
         # Start session and get login form.
         session = self.session
-        login = session.get(LOGIN_URL, verify=LOGIN_VERIFY_SSL_CERT)
+        login = session.get(LOGIN_STEP1_URL, verify=LOGIN_VERIFY_SSL_CERT)
 
         # Get the hidden elements and put them in our form.
         login_html = lxml.html.fromstring(login.text)
@@ -63,11 +86,18 @@ class Controller:
         form['remember-me'] = 1
 
         # Finally, login and return the session.
-        loginStep2 = session.post(LOGIN_AUTH_STEP2_URL, data=form, verify=LOGIN_VERIFY_SSL_CERT)
-        login_html = lxml.html.fromstring(loginStep2.text)
+        login_step2 = session.post(LOGIN_STEP2_URL,
+                                   data=form,
+                                   verify=LOGIN_VERIFY_SSL_CERT)
+
+        login_html = lxml.html.fromstring(login_step2.text)
+
         hidden_elements = login_html.xpath('//form//input[@type="hidden"]')
+
         form = {x.attrib['name']: x.attrib['value'] for x in hidden_elements}
 
-        loginStep3 = session.post(LOGIN_AUTH_STEP3_URL, data=form, verify=LOGIN_VERIFY_SSL_CERT)
+        session.post(LOGIN_STEP3_URL,
+                     data=form,
+                     verify=LOGIN_VERIFY_SSL_CERT)
 
         return session.cookies

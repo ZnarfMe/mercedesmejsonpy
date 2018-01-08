@@ -1,14 +1,16 @@
+""" Setup configuration fo pypi
+
+"""
 from setuptools import setup
 setup(
     name='mercedesmejsonpy',
-    version='0.0.12',
+    version='0.0.13',
     packages=['mercedesmejsonpy'],
     include_package_data=True,
     python_requires='>=3',
     license='WTFPL',
     description='A library to work with Mercedes ME API.',
     long_description='A library to work with Mercedes ME car API.',
-    #url='https://github.com/ReneNulschDE/mercedesmejsonpy/archive/0.0.1.tar.gz',
     author='Rene Nulsch',
     author_email='github.mercedesmejsonpy@nulsch.de',
     classifiers=[

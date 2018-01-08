@@ -1,6 +1,6 @@
 mercedesmejsonpy.egg-info
 dist
-
+.vscode
 
 # Windows image file caches
 Thumbs.db
