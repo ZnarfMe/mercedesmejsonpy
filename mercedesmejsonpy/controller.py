@@ -13,6 +13,7 @@ import time
 from multiprocessing import RLock
 import requests
 import lxml.html
+from mercedesmejsonpy import Exceptions as mbmeExc
 
 SERVER_UI = "https://ui.meapp.secure.mercedes-benz.com"
 SERVER_LOGIN = "https://login.secure.mercedes-benz.com"
@@ -21,8 +22,9 @@ SERVER_APP = "https://app.secure.mercedes-benz.com"
 ME_STATUS_URL = "{0}/api/v1.1/me".format(SERVER_UI)
 ME_LOCATION_URL = "{0}/backend/vehicles/%s/location/v2".format(SERVER_APP)
 LOGIN_STEP1_URL = ME_STATUS_URL
-LOGIN_STEP2_URL = '{0}/wl/login'.format(SERVER_LOGIN)
-LOGIN_STEP3_URL = '{0}/iap/b2c-sm-legacy-15.fcc'.format(SERVER_LOGIN)
+LOGIN_STEP2_URL = '/wl/login'
+
+CONTENT_TYPE_JSON = "application/json;charset=UTF-8"
 
 # Set to False for testing with tools like fiddler
 # Change to True for production
@@ -34,12 +36,14 @@ class Controller:
     def __init__(self, username, password, update_interval):
 
         self.__lock = RLock()
+        self.cars = []
+        self.update_interval = update_interval
+        self.is_valid_session = False
         self.last_update_time = 0
         self.session = requests.session()
         self.session_cookies = self._get_session_cookies(username, password)
-        self.cars = []
-        self.update_interval = update_interval
-        self._get_cars()
+        if self.is_valid_session:
+            self._get_cars()
 
 
     def update(self):
@@ -49,7 +53,7 @@ class Controller:
         self._get_cars()
 
 
-    def getLocation(self, vin):
+    def get_location(self, vin):
         """ get refreshed location information.
 
         """
@@ -64,19 +68,20 @@ class Controller:
             if cur_time - self.last_update_time > self.update_interval:
                 response = self.session.get(ME_STATUS_URL,
                                             verify=LOGIN_VERIFY_SSL_CERT)
-                self.cars = json.loads(
-                    response.content.decode('utf8'))['user']['vehicles']
-                self.last_update_time = time.time()
+
+                if response.headers["Content-Type"] == CONTENT_TYPE_JSON:
+                    self.cars = json.loads(
+                        response.content.decode('utf8'))['user']['vehicles']
+                    self.last_update_time = time.time()
 
 
     def _get_session_cookies(self, username, password):
-        # GET parameters - URL we'd like to log into.
         # Start session and get login form.
         session = self.session
-        login = session.get(LOGIN_STEP1_URL, verify=LOGIN_VERIFY_SSL_CERT)
+        loginpage = session.get(LOGIN_STEP1_URL, verify=LOGIN_VERIFY_SSL_CERT)
 
         # Get the hidden elements and put them in our form.
-        login_html = lxml.html.fromstring(login.text)
+        login_html = lxml.html.fromstring(loginpage.text)
         hidden_elements = login_html.xpath('//form//input[@type="hidden"]')
         form = {x.attrib['name']: x.attrib['value'] for x in hidden_elements}
 
@@ -85,19 +90,34 @@ class Controller:
         form['password'] = password
         form['remember-me'] = 1
 
-        # Finally, login and return the session.
-        login_step2 = session.post(LOGIN_STEP2_URL,
+        # login and check the values.
+        url = "{0}{1}".format(SERVER_LOGIN, LOGIN_STEP2_URL)
+        login_step2 = session.post(url,
                                    data=form,
                                    verify=LOGIN_VERIFY_SSL_CERT)
 
-        login_html = lxml.html.fromstring(login_step2.text)
+        login_page = lxml.html.fromstring(login_step2.text)
 
-        hidden_elements = login_html.xpath('//form//input[@type="hidden"]')
+        hidden_elements = login_page.xpath('//form//input[@type="hidden"]')
+        target_url = login_page.find(".//form").action
 
+        # if we are on the old page, maybe the username or pw are wrong
+        if target_url == "/wl/login":
+            raise mbmeExc.MercedesMeException(401)
+
+        # login correct, jump to the final page
+        # and collect the right cookie
         form = {x.attrib['name']: x.attrib['value'] for x in hidden_elements}
 
-        session.post(LOGIN_STEP3_URL,
-                     data=form,
-                     verify=LOGIN_VERIFY_SSL_CERT)
+        url = "{0}{1}".format(SERVER_LOGIN, target_url)
+        final_result = session.post(url,
+                                    data=form,
+                                    verify=LOGIN_VERIFY_SSL_CERT)
 
-        return session.cookies
+        if final_result.headers["Content-Type"] == CONTENT_TYPE_JSON:
+            # alles ok
+            self.is_valid_session = True
+            return session.cookies
+
+        self.is_valid_session = False
+        return None
