@@ -4,7 +4,7 @@
 from setuptools import setup
 setup(
     name='mercedesmejsonpy',
-    version='0.1.1',
+    version='0.1.2',
     packages=['mercedesmejsonpy'],
     include_package_data=True,
     python_requires='>=3',

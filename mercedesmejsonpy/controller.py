@@ -11,8 +11,8 @@ Attributes:
 import json
 import time
 from multiprocessing import RLock
-import requests
 import lxml.html
+import requests
 from mercedesmejsonpy import Exceptions as mbmeExc
 
 SERVER_UI = "https://ui.meapp.secure.mercedes-benz.com"
@@ -30,7 +30,7 @@ CONTENT_TYPE_JSON = "application/json;charset=UTF-8"
 # Change to True for production
 LOGIN_VERIFY_SSL_CERT = True
 
-class Controller:
+class Controller(object):
     """ Simple Mercedes me API.
     """
     def __init__(self, username, password, update_interval):
